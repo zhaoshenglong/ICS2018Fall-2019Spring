@@ -1,0 +1,57 @@
+# copy the list to from src to dist
+# author: zhaoshenglong
+# id:     515030910241
+
+# start of program
+# execution begins at address 0
+	.pos 0
+	irmovq stack, %rsp
+	call main
+	halt
+
+# data structure used for testing
+	.align 8
+# source block
+src:
+	.quad 0x00a
+	.quad 0x0b0
+	.quad 0xc00
+# destination
+dest:
+	.quad 0x111
+	.quad 0x222
+	.quad 0x333
+
+# program starts from here
+
+main:
+	irmovq src, %rdi
+	irmovq dest, %rsi
+	irmovq $0x3, %rdx
+	call copy
+	ret
+
+# copy(long *src, long *dest, long len)
+# src in %rdi, dest in %rsi, len in %rdx
+copy:
+	pushq %rbx
+	xorq %rax, %rax
+	irmovq $1, %r10
+	irmovq $8, %r11
+	andq %rdx, %rdx
+	jmp test
+loop:
+	mrmovq (%rdi), %rbx
+	rmmovq %rbx, (%rsi)
+	xorq %rbx, %rax
+	addq %r11, %rdi
+	addq %r11, %rsi
+	subq %r10, %rdx
+test:
+	jg loop
+	popq %rbx
+	ret
+
+# stack starts here and grows to less address
+	.pos 0x200
+stack:

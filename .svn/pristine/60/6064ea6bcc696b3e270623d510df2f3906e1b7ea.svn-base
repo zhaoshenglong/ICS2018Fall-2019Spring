@@ -1,0 +1,115 @@
+/*
+ * BUG#0
+ * description: 
+     miss semicolon
+ * location: 
+ *   int a = 10  (line 18)
+ * evidence: 
+ *   test.c:19: error: two or more data types in declaration specifiers
+ */
+
+BUG#1
+description:
+miss semicolon
+location:
+enum { buf_size = buf_nrec * 100 }(line 52)
+evidence: 
+expected ‘;’, identifier or ‘(’ before ‘struct’
+
+BUG#2
+description:miss semicolon
+location:
+typedef struct record { 
+	char key[key_len] ;
+	char recno[recno_len];
+	char pad[pad_len];
+} record_t(line 59)
+evidence:
+error: expected ‘=’, ‘,’, ‘;’, ‘asm’ or ‘__attribute__’ before ‘static’
+ static long cur_rec = 0;
+
+
+
+BUG#3
+description:
+use wrong struct name
+location:
+gen_rec(record *rec)(line 114)
+evidence:error: 
+unknown type name ‘record’ gen_rec(record *rec)
+
+
+
+BUG#4
+description:
+stdio.h wasn't included
+location:
+#include <stdlib.h>(line 42)
+evidence:
+warning: implicit declaration of function ‘gen_rec’ [-Wimplicit-function-declaration] gen_rec(rec + cnt);
+
+
+
+BUG#5
+description:
+miss left brace
+location:
+if (buf  == NULL) (line 188)
+evidence:
+error: expected identifier or ‘(’ before ‘while’ while (cur_rec < rec_max) {
+
+
+
+BUG#6
+description:
+file open read only 
+location:
+FILE *file = fopen(fn, "r");(line 187)
+evidence:error: 
+unable to open file test.txt
+
+
+
+
+
+BUG#7
+description:wrong integer in inside for loop
+location:
+for (j = 0; j < 10; i++ ){
+evidence:
+the origin code is for(j=0;j<10;i++)
+
+
+
+
+BUG#8
+description:
+fail to malloc enough space for buf
+
+location:
+char *buf = (char *)malloc(buf_rec) (line 183)
+evidence:
+origin code is char *buf = (char*)malloc(buf_rec); 
+
+
+
+
+BUG#9
+description:repeatly assign to rec,miss imcrement
+
+location:
+gen_rec(rec);(line 154 )
+
+evidence:
+raw code is above
+
+
+
+BUG#10
+description:rec size error
+
+location:
+enum { rec_len = key_len + pad_len + recno_len };
+
+evidence:
+code is above;

@@ -1,0 +1,118 @@
+#/* $begin ncopy-ys */
+##################################################################
+# ncopy.ys - Copy a src block of len words to dst.
+# Return the number of positive words (>0) contained in src.
+#
+# Include your name and ID here.
+# Name:zhaoshenglong
+# ID  :515030910241
+# Describe how and why you modified the baseline code.
+# Descriptions:
+# 1. optimize the load/use hazard
+# 	so that mr and rm will not stall
+#
+##################################################################
+# Do not modify this portion
+# Function prologue.
+# %rdi = src, %rsi = dst, %rdx = len
+ncopy:
+
+##################################################################
+# You can modify this portion
+	# Loop header
+	iaddq $-10, %rdx
+	jle Remain
+Loop:	
+	mrmovq (%rdi), %r10	# read val from src...
+	rmmovq %r10, (%rsi)	# ...and store it to dst
+	andq %r10, %r10		# val <= 0?
+	jle Next1
+	iaddq $1,%rax		# count++
+Next1:	mrmovq 0x8(%rdi),%r10
+	rmmovq %r10,0x8(%rsi)
+	andq %r10,%r10
+	jle Next2
+	iaddq $1,%rax
+Next2:	mrmovq 0x10(%rdi),%r10
+	rmmovq %r10,0x10(%rsi)
+	andq %r10,%r10
+	jle Next3
+	iaddq $1,%rax
+Next3:	mrmovq 0x18(%rdi),%r10
+	rmmovq %r10,0x18(%rsi)
+	andq %r10,%r10
+	jle Next4
+	iaddq $1,%rax
+Next4:	mrmovq 0x20(%rdi),%r10
+	rmmovq %r10,0x20(%rsi)
+	andq %r10,%r10
+	jle Next5
+	iaddq $1,%rax
+Next5:	mrmovq 0x28(%rdi),%r10
+	rmmovq %r10,0x28(%rsi)
+	andq %r10,%r10
+	jle Next6
+	iaddq $1,%rax
+Next6:	mrmovq 0x30(%rdi),%r10
+	rmmovq %r10,0x30(%rsi)
+	andq %r10,%r10
+	jle Next7
+	iaddq $1,%rax
+Next7:	mrmovq 0x38(%rdi),%r10
+	rmmovq %r10,0x38(%rsi)
+	andq %r10,%r10
+	jle Next8
+	iaddq $1,%rax
+Next8:	mrmovq 0x40(%rdi),%r10
+	rmmovq %r10,0x40(%rsi)
+	andq %r10,%r10
+	jle Next9
+	iaddq $1,%rax
+Next9:	mrmovq 0x48(%rdi),%r10
+	rmmovq %r10,0x48(%rsi)
+	andq %r10,%r10
+	jle Npos
+	iaddq $1,%rax
+Npos:	
+	iaddq $0x50, %rdi	# src++
+	iaddq $0x50, %rsi	# dst++
+	
+	iaddq $-10, %rdx		# len--
+	jge Loop		# if so, goto Loop:
+Remain:
+	iaddq $8, %rdx
+	jl RRemain
+RLoop:
+	mrmovq (%rdi), %r10	# read val from src...
+	rmmovq %r10, (%rsi)
+	andq   %r10,%r10
+	jle RNext1
+	iaddq   $1, %rax
+RNext1:
+	mrmovq 0x8(%rdi),%r10
+	rmmovq %r10, 0x8(%rsi)
+	andq %r10,%r10
+	jle Update
+	iaddq $1, %rax
+Update:	
+	iaddq $0x10, %rdi
+	iaddq $0x10,%rsi
+	iaddq $-2, %rdx
+	jge RLoop
+RRemain:
+	iaddq $2, %rdx		
+	je Done
+	mrmovq (%rdi),%r10
+	rmmovq %r10, (%rsi)
+	andq %r10,%r10
+	jle Done
+	iaddq $1, %rax
+##################################################################
+# Do not modify the following section of code
+# Function epilogue.
+Done:
+	ret
+##################################################################
+# Keep the following label at the end of your function
+End:
+#/* $end ncopy-ys */
