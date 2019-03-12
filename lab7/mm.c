@@ -56,8 +56,8 @@
 #define GET_PREV_ALLOC(p) (GET(p) & 0x2)
 
 /*Transfer an address / word into word / address*/
-#define WORD_TO_ADDR(word) ((unsigned long)(addr_head | (unsigned long)word))
-#define ADDR_TO_WORD(addr) ((unsigned int)addr)
+#define WORD_TO_ADDR(word) ((void *)(root_addr + (word)))
+#define ADDR_TO_WORD(addr) ((unsigned int)((void *)(addr)-root_addr))
 
 /* Set the free block to the list and get free block from list*/
 #define SET_PTR(p, addr) (PUT(p, ADDR_TO_WORD(addr)))
@@ -66,15 +66,21 @@
 /* Size of segregated storage list*/
 #define FREE_SIZE 128
 
+/* MAacro for debug*/
+#define COALESCE 0
+#define FREE_BLOCK 1
+#define COAL_AND_FREE 2
+#define FREE_LIST 3
+
 /* 
  * Global variable
  * heap_listp: poiter of the heap list
  * segreg_free: array of free block list
- * addr_head: high 32 bits of address
+ * root_addr: high 32 bits of address
  */
 void *heap_listp = 0;
 unsigned int *segreg_free;
-unsigned long addr_head;
+void *root_addr;
 
 /* Extend the heap by words when there is no fit*/
 static void *extend_heap(size_t words);
@@ -94,6 +100,9 @@ static void add_free(void *bp);
 /* Remove the free block from list*/
 static void *remove_free(void *bp);
 
+/* Check if the heap is consistent return -1 if not, 0 otherwise.*/
+static int mm_check(int sign);
+
 /* 
  * mm_init - initialize the malloc package.
  */
@@ -102,9 +111,10 @@ int mm_init(void)
 
     if ((segreg_free = mem_sbrk(FREE_SIZE * sizeof(unsigned int) + 4 * WSIZE)) == (void *)-1)
         return -1;
-    heap_listp = segreg_free + FREE_SIZE * sizeof(unsigned int);
+    heap_listp = (void *)segreg_free + FREE_SIZE * sizeof(unsigned int);
+
     memset(segreg_free, 0, FREE_SIZE * sizeof(unsigned int));
-    addr_head = (long)heap_listp & (((long)1 << 63) >> 31);
+    root_addr = segreg_free;
 
     PUT(heap_listp, 0);
     PUT(heap_listp + (1 * WSIZE), PACK(DSIZE, 1));
@@ -112,10 +122,14 @@ int mm_init(void)
 
     /* Epilogue block, 3 means the Prologue block is marked allocated*/
     PUT(heap_listp + (3 * WSIZE), PACK(0, 3));
+    heap_listp += (2 * WSIZE);
 
     if (extend_heap(CHUNKSIZE / WSIZE) == NULL)
         return -1;
-    add_free(heap_listp + (3 * WSIZE));
+
+    add_free(heap_listp + (2 * WSIZE));
+    /* Check if there is no coalesce*/
+
     return 0;
 }
 
@@ -135,27 +149,25 @@ static void *extend_heap(size_t words)
      *  2. write to the new request heap page
      *  3. set the new epilogue
      */
+
     PUT(HDRP(bp), PACK(size, GET_PREV_ALLOC(HDRP(bp))));
 
     PUT(FTRP(bp), PACK(size, GET_PREV_ALLOC(HDRP(bp))));
 
     PUT(HDRP(NEXT_BLKP(bp)), PACK(0, 1));
 
-    /* Coalesce if the previous block was free*/
     void *coal_ptr = coalesce(bp);
-    /* Is it necessary to add_dree? Since extend will only be called
-     * when initial and extend.
-     * initial only once and can be add_free in that case
-     * extend heap will be used at once, add,then free, it is a waste.
-     */
+    /* Check if there is no coalesce*/
+
     return coal_ptr;
 }
 
 static void *coalesce(void *bp)
 {
-    
+
     size_t prev_alloc = GET_PREV_ALLOC(HDRP(bp));
     size_t next_alloc = GET_ALLOC(HDRP(NEXT_BLKP(bp)));
+
     size_t size = GET_SIZE(HDRP(bp));
     /*      case 1      */
     if (prev_alloc && next_alloc)
@@ -190,12 +202,14 @@ static void *coalesce(void *bp)
         PUT(FTRP(NEXT_BLKP(bp)), PACK(size, 2));
         bp = PREV_BLKP(bp);
     }
+    /* Check if there is no coalesce*/
+
     return bp;
 }
 
 void add_free(void *bp)
 {
-    size_t size = GET_SIZE(bp);
+    size_t size = GET_SIZE(HDRP(bp));
     /*      if asize > 128 group into 129~INF       */
     size_t group = size / DSIZE - 2;
     if (group > 127)
@@ -205,10 +219,11 @@ void add_free(void *bp)
     unsigned int *group_addr = segreg_free + group;
 
     /* Threre is no block in the group*/
-    if (group_addr == (unsigned int *)0)
+
+    if (GET_PTR(group_addr) == root_addr)
     {
         SET_PTR(bp, group_addr);
-        SET_PTR(bp + WSIZE, (unsigned long *)0);
+        SET_PTR(bp + WSIZE, root_addr);
         SET_PTR(group_addr, bp);
     }
     /* There are blocks in the group*/
@@ -223,19 +238,36 @@ void add_free(void *bp)
 
 void *remove_free(void *bp)
 {
-    unsigned long *prev_addr = GET_PTR(bp);
-    unsigned long *next_addr = GET_PTR(bp + WSIZE);
-
+    void *prev_addr = GET_PTR(bp);
+    void *next_addr = GET_PTR(bp + WSIZE);
     /* The block is the last of the list*/
-    if (next_addr == (unsigned long *)0)
+    if (next_addr == root_addr)
     {
-        SET_PTR(prev_addr, (unsigned long *)0);
+        /* Previous block is the list root*/
+        if (prev_addr < heap_listp)
+        {
+            SET_PTR(prev_addr, root_addr);
+        }
+        /* Previous block has both prev and next*/
+        else
+        {
+            SET_PTR(prev_addr + WSIZE, root_addr);
+        }
     }
     /* modify the next block*/
     else
     {
-        SET_PTR(next_addr, prev_addr);
-        SET_PTR(prev_addr, next_addr);
+        if (prev_addr < heap_listp)
+        {
+            SET_PTR(next_addr, prev_addr);
+            SET_PTR(prev_addr, next_addr);
+        }
+        else
+        {
+
+            SET_PTR(next_addr, prev_addr);
+            SET_PTR(prev_addr + WSIZE, next_addr);
+        }
     }
     return bp;
 }
@@ -250,9 +282,8 @@ void *mm_malloc(size_t size)
     size_t extendsize; /* Amount to extend heap if no fit*/
     char *bp;
 
-    if(heap_listp = 0){
+    if (heap_listp == 0)
         mem_init();
-    }
     /* Ignore supurious requests*/
     if (size == 0)
         return NULL;
@@ -263,43 +294,42 @@ void *mm_malloc(size_t size)
     else
         asize = DSIZE * ((size + (WSIZE) + (DSIZE - 1)) / DSIZE);
 
+    /* Check if there is no coalesce*/
     /* Search the free list first*/
     if ((bp = find_fit(asize)) != NULL)
     {
         place(bp, asize);
+
         return bp;
     }
 
     /* No fit found. Get more memory and place the block.*/
+
     extendsize = MAX(asize, CHUNKSIZE);
     if ((bp = extend_heap(extendsize / WSIZE)) == NULL)
         return NULL;
     place(bp, asize);
     return bp;
 }
-
 void *find_fit(size_t asize)
 {
+
     char *bp;
     size_t group = asize / DSIZE - 2;
     if (group > 127)
         group = 127;
-
-    char found = 0;
-    for (int i = group; i < FREE_SIZE && !found; i++)
+    for (unsigned int i = group; i < FREE_SIZE; i++)
     {
         unsigned int *group_addr = segreg_free + i;
-
         if (GET(group_addr) != 0)
         {
             bp = GET_PTR(group_addr);
-            while ((unsigned long)bp != addr_head)
+            while (bp != root_addr)
             {
-                if (GET_SIZE(bp) / DSIZE > asize)
+                if (GET_SIZE(HDRP(bp)) >= asize)
                 {
-                    found = 1;
                     remove_free(bp);
-                    break;
+                    return bp;
                 }
                 bp = GET_PTR(bp + WSIZE);
             }
@@ -312,7 +342,7 @@ static void place(void *bp, size_t asize)
     size_t csize = GET_SIZE(HDRP(bp));
 
     /* The block is large enough to be split into small one*/
-    if ((csize - asize) >= (2 * DSIZE))
+    if (csize >= asize + (2 * DSIZE))
     {
         PUT(HDRP(bp), PACK(asize, GET_PREV_ALLOC(HDRP(bp)) | 1));
         bp = NEXT_BLKP(bp);
@@ -326,18 +356,25 @@ static void place(void *bp, size_t asize)
         bp = NEXT_BLKP(bp);
         PUT(HDRP(bp), PACK(GET_SIZE(HDRP(bp)), 2 | GET_ALLOC(HDRP(bp))));
     }
+    /* Check if there is no coalesce*/
 }
 /*
  * mm_free - Freeing a block does nothing.
  */
 void mm_free(void *bp)
 {
+
+    if (!GET_ALLOC(HDRP(bp)))
+        return;
     size_t size = GET_SIZE(HDRP(bp));
     PUT(HDRP(bp), PACK(size, GET_PREV_ALLOC(HDRP(bp))));
+    PUT(FTRP(bp), PACK(size, GET_PREV_ALLOC(HDRP(bp))));
     void *next_header = HDRP(NEXT_BLKP(bp));
     PUT(next_header, PACK(GET_SIZE(next_header), GET_ALLOC(next_header)));
     bp = coalesce(bp);
     add_free(bp);
+
+    /* Check if there is no coalesce*/
 }
 
 /*
@@ -358,4 +395,68 @@ void *mm_realloc(void *ptr, size_t size)
     memcpy(newptr, oldptr, copySize);
     mm_free(oldptr);
     return newptr;
+}
+/* Check if the heap is consistent when debugging*/
+int mm_check(int sign)
+{
+    /* Local variables used for checking coalesce*/
+    unsigned int prev_alloc = 0, curr_alloc = 0;
+    /* Local variables used for checking free blocks*/
+    unsigned int allocated = 0;
+    switch (sign)
+    {
+    case COALESCE:
+        for (char *bp = heap_listp; GET_SIZE(HDRP(bp)) > 0; bp = NEXT_BLKP(bp))
+        {
+            curr_alloc = GET_ALLOC(HDRP(bp));
+            /* Allocated information of previous block is wrong*/
+            if (prev_alloc != (GET_PREV_ALLOC(HDRP(bp))) >> 1)
+                return -1;
+            prev_alloc = (GET_PREV_ALLOC(HDRP(bp)) >> 1);
+            if (!curr_alloc && !prev_alloc)
+                return -1;
+            prev_alloc = curr_alloc;
+        }
+        break;
+    case FREE_BLOCK:
+        for (char *bp = heap_listp; GET_SIZE(HDRP(bp)) > 0; bp = NEXT_BLKP(bp))
+        {
+            allocated = GET_ALLOC(HDRP(bp));
+            if (!allocated)
+            {
+                if (GET_SIZE(HDRP(bp)) != GET_SIZE(FTRP(bp)))
+                    return -1;
+                if (GET_ALLOC(FTRP(bp)))
+                    return -1;
+            }
+        }
+        break;
+    case COAL_AND_FREE:
+        for (char *bp = heap_listp; GET_SIZE(HDRP(bp)) > 0; bp = NEXT_BLKP(bp))
+        {
+            allocated = GET_ALLOC(HDRP(bp));
+            if (!allocated)
+            {
+                if (GET_SIZE(HDRP(bp)) != GET_SIZE(FTRP(bp)))
+                    return -1;
+                if (GET_ALLOC(FTRP(bp)))
+                    return -1;
+            }
+            curr_alloc = GET_ALLOC(HDRP(bp));
+            /* Allocated information of previous block is wrong*/
+            if (prev_alloc != (GET_PREV_ALLOC(HDRP(bp))) >> 1)
+                return -1;
+            prev_alloc = (GET_PREV_ALLOC(HDRP(bp)) >> 1);
+            if (!curr_alloc && !prev_alloc)
+                return -1;
+            prev_alloc = curr_alloc;
+        }
+        break;
+    case FREE_LIST:
+
+        break;
+    default:
+        return 0;
+    }
+    return 0;
 }
