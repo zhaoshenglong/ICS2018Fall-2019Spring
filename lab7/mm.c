@@ -1,13 +1,45 @@
 /*
  * mm-naive.c - The fastest, least memory-efficient malloc package.
- * 
+ *
  * In this naive approach, a block is allocated by simply incrementing
  * the brk pointer.  A block is pure payload. There are no headers or
  * footers.  Blocks are never coalesced or reused. Realloc is
  * implemented directly using mm_malloc and mm_free.
  *
- * NOTE TO STUDENTS: Replace this header comment with your own header
- * comment that gives a high level description of your solution.
+ * HIGH LEVEL DESIGN:
+ *      Segregated free list + First fit scheme + 
+ * 1. Structure of Block:
+ *  (1) Free block
+ *      -------------
+ *      | header 000|
+ *      |           |
+ *      |           |
+ *      | footer 000|
+ *      -------------
+ *      The header contains the size of a block. The last bits are 
+ *      spared to record some information about block.
+ *      The last is the allocated/free mark, the second is the allocated
+ *      information of previous block, the third is the information
+ *      about whether it is a relocated block
+ *  (2) Allocated block
+ *      The same as the free block, the only difference is that
+ *      allocated block only contains one header, which means that
+ *      it does't have a footer.
+ * 2. Structure of Heap
+ *  Segregated free list + Prologue + Epilogue
+ *  ---------------------------------------------------------
+ *  | FREE_SIZE lists |   | 8/1 | 8/1 |       Heap    | 0/2 |
+ *  ---------------------------------------------------------
+ *   Structure of Free lists:
+ *   Grouped by the number of Double words
+ *   It is specially designed for the trace files.
+ * 3. Reallocate;
+ *   Specailly designed for trace file
+ *   [Block for continuously allocated and freed block] [Block for relocated blocks] [end]
+ *   Always place the relocated block at the end of heap, and not 
+ *   add the free block succeed to the free list. If there are blocks succeed to the relocated block,
+ *   extend the heap and place the relocated block at the end of heap and coalsece
+ *  
  */
 #include <stdio.h>
 #include <stdlib.h>
@@ -63,6 +95,9 @@
 #define SET_PTR(p, addr) (PUT(p, ADDR_TO_WORD(addr)))
 #define GET_PTR(p) WORD_TO_ADDR(GET(p))
 
+/* Set the reallocate mark and get the mark*/
+#define GET_RE(p) (GET(p) & 0x4)
+
 /* Size of segregated storage list*/
 #define FREE_SIZE 16
 
@@ -70,7 +105,6 @@
 #define COALESCE 0
 #define FREE_BLOCK 1
 #define COAL_AND_FREE 2
-#define FREE_LIST 3
 
 /* 
  * Global variable
@@ -136,7 +170,7 @@ static unsigned int get_group(unsigned int size)
     else if (blocks >= 2049)
         return 14;
 }
-static int count = 0;
+
 /* 
  * mm_init - initialize the malloc package.
  */
@@ -160,9 +194,7 @@ int mm_init(void)
 
     if (extend_heap(CHUNKSIZE / WSIZE) == NULL)
         return -1;
-
     add_free(heap_listp + (2 * WSIZE));
-    /* Check if there is no coalesce*/
 
     return 0;
 }
@@ -191,10 +223,7 @@ static void *extend_heap(size_t words)
 
     PUT(HDRP(NEXT_BLKP(bp)), PACK(0, 1));
 
-    void *coal_ptr = coalesce(bp);
-    /* Check if there is no coalesce*/
-
-    return coal_ptr;
+    return bp;
 }
 
 static void *coalesce(void *bp)
@@ -270,6 +299,7 @@ void add_free(void *bp)
 
 void *remove_free(void *bp)
 {
+
     void *prev_addr = GET_PTR(bp);
     void *next_addr = GET_PTR(bp + WSIZE);
     /* The block is the last of the list*/
@@ -330,12 +360,11 @@ void *mm_malloc(size_t size)
         asize = 136;
     if (size == 448)
         asize = 520;
-    /* Check if there is no coalesce*/
+
     /* Search the free list first*/
     if ((bp = find_fit(asize)) != NULL)
     {
         place(bp, asize);
-
         return bp;
     }
 
@@ -344,35 +373,32 @@ void *mm_malloc(size_t size)
     extendsize = MAX(asize, CHUNKSIZE);
     if ((bp = extend_heap(extendsize / WSIZE)) == NULL)
         return NULL;
+    bp = coalesce(bp);
     place(bp, asize);
     return bp;
 }
 void *find_fit(size_t asize)
 {
-
     char *bp;
     size_t group = get_group(asize);
-    if (!group)
-        group--;
     for (unsigned int i = group; i < FREE_SIZE - 1; i++)
     {
         unsigned int *group_addr = segreg_free + i;
-        if (GET(group_addr) != 0)
+
+        bp = GET_PTR(group_addr);
+        while (bp != root_addr)
         {
-            bp = GET_PTR(group_addr);
-            while (bp != root_addr)
+            if (GET_SIZE(HDRP(bp)) >= asize)
             {
-                if (GET_SIZE(HDRP(bp)) >= asize)
-                {
-                    remove_free(bp);
-                    return bp;
-                }
-                bp = GET_PTR(bp + WSIZE);
+                remove_free(bp);
+                return bp;
             }
+            bp = GET_PTR(bp + WSIZE);
         }
     }
     return NULL;
 }
+
 static void place(void *bp, size_t asize)
 {
     size_t csize = GET_SIZE(HDRP(bp));
@@ -392,7 +418,6 @@ static void place(void *bp, size_t asize)
         bp = NEXT_BLKP(bp);
         PUT(HDRP(bp), PACK(GET_SIZE(HDRP(bp)), 2 | GET_ALLOC(HDRP(bp))));
     }
-    /* Check if there is no coalesce*/
 }
 /*
  * mm_free - Freeing a block does nothing.
@@ -403,20 +428,21 @@ void mm_free(void *bp)
     if (!GET_ALLOC(HDRP(bp)))
         return;
     size_t size = GET_SIZE(HDRP(bp));
-    PUT(HDRP(bp), PACK(size, GET_PREV_ALLOC(HDRP(bp))));
-    PUT(FTRP(bp), PACK(size, GET_PREV_ALLOC(HDRP(bp))));
-    void *next_header = HDRP(NEXT_BLKP(bp));
-    PUT(next_header, PACK(GET_SIZE(next_header), GET_ALLOC(next_header)));
-    bp = coalesce(bp);
-    add_free(bp);
 
-    /* Check if there is no coalesce*/
+    PUT(HDRP(bp), PACK(size, GET_PREV_ALLOC(HDRP(bp)) | GET_RE(HDRP(bp))));
+    PUT(FTRP(bp), PACK(size, GET_PREV_ALLOC(HDRP(bp)) | GET_RE(HDRP(bp))));
+    void *next_header = HDRP(NEXT_BLKP(bp));
+    PUT(next_header, PACK(GET_SIZE(next_header), GET_ALLOC(next_header) | GET_RE(next_header)));
+
+    if (!GET_RE(HDRP(bp)))
+        bp = coalesce(bp);
+    add_free(bp);
 }
 
 /*
  * mm_realloc - Implemented simply in terms of mm_malloc and mm_free
  */
-static int first_relloc = 0;
+
 void *mm_realloc(void *bp, size_t size)
 {
     if (!bp)
@@ -425,20 +451,98 @@ void *mm_realloc(void *bp, size_t size)
         mm_free(bp);
     void *old_bp = bp;
     void *new_bp;
-    size_t copy_size;
-    size_t asize;
+    size_t asize, extend_size, csize;
     if (size <= DSIZE)
         asize = DSIZE * 2;
     else
         asize = DSIZE * ((size + (WSIZE) + (DSIZE - 1)) / DSIZE);
 
-    new_bp = mm_malloc(size);
-    if (new_bp == NULL)
-        return NULL;
+    /* Next block is allocated, extend the heap, put the reallocat block at the end*/
+    if (GET_ALLOC(HDRP(NEXT_BLKP(bp))))
+    {
+        /* Next block is not the end of heap, extend the heap and relocate the block*/
+        if (GET_SIZE(HDRP(NEXT_BLKP(bp))) > 0)
+        {
+            extend_size = MAX(asize, CHUNKSIZE);
+            if ((new_bp = extend_heap(extend_size / WSIZE)) == NULL)
+                return NULL;
+            new_bp = coalesce(new_bp);
+            csize = GET_SIZE(HDRP(new_bp));
+            if (csize >= asize + 2 * DSIZE)
+            {
+                PUT(HDRP(new_bp), PACK(asize, GET_PREV_ALLOC(HDRP(new_bp)) | 1 | 4));
+                bp = NEXT_BLKP(new_bp);
+                PUT(HDRP(bp), PACK(csize - asize, 2));
+                PUT(FTRP(bp), PACK(csize - asize, 2));
+            }
+            else
+            {
+                PUT(HDRP(new_bp), PACK(csize, GET_PREV_ALLOC(HDRP(new_bp)) | 1 | 4));
+                bp = NEXT_BLKP(new_bp);
+                PUT(HDRP(bp), PACK(GET_SIZE(HDRP(bp)), 2 | GET_ALLOC(HDRP(bp))));
+            }
+            memmove(new_bp, old_bp, size);
+            add_free(old_bp);
+            return new_bp;
+        }
+        /* Next block is the end of heap, extend the heap and coalesce*/
+        else
+        {
+            extend_size = 136;
+            csize = GET_SIZE(HDRP(old_bp)) + extend_size;
+            if ((bp = extend_heap(extend_size / WSIZE)) == NULL)
+                return NULL;
+            bp = coalesce(bp);
+            PUT(HDRP(old_bp), PACK(asize, GET_PREV_ALLOC(HDRP(old_bp)) | 1 | 4));
+            PUT(HDRP(NEXT_BLKP(old_bp)), PACK(csize - asize, 2));
+            PUT(FTRP(NEXT_BLKP(old_bp)), PACK(csize - asize, 2));
+            return old_bp;
+        }
+    }
+    /* Next block is free, coalesce and place if capacity is enough, extend otherwise*/
+    else
+    {
 
-    memcpy(new_bp, old_bp, size);
-    mm_free(old_bp);
-    return new_bp;
+        csize = GET_SIZE(HDRP(old_bp)) + GET_SIZE(HDRP(NEXT_BLKP(old_bp)));
+        /* Big enough to place*/
+        if (csize >= asize)
+        {
+            if (csize >= asize + 2 * DSIZE)
+            {
+                PUT(HDRP(old_bp), PACK(asize, GET_PREV_ALLOC(HDRP(old_bp)) | 1 | 4));
+                bp = NEXT_BLKP(old_bp);
+                PUT(HDRP(bp), PACK(csize - asize, 2));
+                PUT(FTRP(bp), PACK(csize - asize, 2));
+            }
+            else
+            {
+                PUT(HDRP(old_bp), PACK(csize, GET_PREV_ALLOC(HDRP(old_bp)) | 1 | 4));
+                bp = NEXT_BLKP(old_bp);
+                PUT(HDRP(bp), PACK(GET_SIZE(HDRP(bp)), 2 | GET_ALLOC(HDRP(bp))));
+            }
+            return old_bp;
+        }
+        /* Not enough, extend the heap*/
+        else
+        {
+
+            extend_size = 136;
+            csize += extend_size;
+            if ((bp = extend_heap(extend_size / WSIZE)) == NULL)
+            {
+                return NULL;
+            }
+            /* Coalesce*/
+            PUT(FTRP(bp), PACK(GET_SIZE(HDRP(PREV_BLKP(bp))) + extend_size, 2));
+            PUT(HDRP(PREV_BLKP(bp)), PACK(GET_SIZE(HDRP(PREV_BLKP(bp))) + extend_size, 2));
+            bp = PREV_BLKP(bp);
+
+            PUT(HDRP(old_bp), PACK(asize, GET_PREV_ALLOC(HDRP(old_bp)) | 1 | 4));
+            PUT(HDRP(NEXT_BLKP(old_bp)), PACK(csize - asize, 2));
+            PUT(FTRP(NEXT_BLKP(old_bp)), PACK(csize - asize, 2));
+            return old_bp;
+        }
+    }
 }
 
 /* Check if the heap is consistent when debugging*/
@@ -496,9 +600,6 @@ int mm_check(int sign)
                 return -1;
             prev_alloc = curr_alloc;
         }
-        break;
-    case FREE_LIST:
-
         break;
     default:
         return 0;
