@@ -167,7 +167,7 @@ static unsigned int get_group(unsigned int size)
         return 11;
     else if (blocks <= 2048 && blocks >= 1026)
         return 13;
-    else if (blocks >= 2049)
+    else
         return 14;
 }
 
@@ -380,7 +380,7 @@ void *mm_malloc(size_t size)
 
 void *find_fit(size_t asize)
 {
-    char *bp, *best_bp;
+    char *bp, *best_bp = root_addr;
     size_t min_size = 1 << 31;
     size_t group = get_group(asize);
     char found = 0;
@@ -627,7 +627,7 @@ int mm_check(int sign)
         break;
 
     case FREE_LIST:
-        for (char *fp = segreg_free; fp < segreg_free + FREE_SIZE - 1; fp += WSIZE)
+        for (char *fp = (char *)segreg_free; fp < (char *)(segreg_free + FREE_SIZE - 1); fp += WSIZE)
         {
             char *tmp = GET_PTR(fp);
             while (tmp != root_addr)
