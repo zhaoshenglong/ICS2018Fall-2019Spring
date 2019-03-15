@@ -105,7 +105,7 @@
 #define COALESCE 0
 #define FREE_BLOCK 1
 #define COAL_AND_FREE 2
-
+#define FREE_LIST 3
 /* 
  * Global variable
  * heap_listp: poiter of the heap list
@@ -377,24 +377,48 @@ void *mm_malloc(size_t size)
     place(bp, asize);
     return bp;
 }
+
 void *find_fit(size_t asize)
 {
-    char *bp;
+    char *bp, *best_bp;
+    size_t min_size = 1 << 31;
     size_t group = get_group(asize);
-    for (unsigned int i = group; i < FREE_SIZE - 1; i++)
+    char found = 0;
+    for (unsigned int i = group; i < FREE_SIZE - 1 && !found; i++)
     {
         unsigned int *group_addr = segreg_free + i;
 
         bp = GET_PTR(group_addr);
         while (bp != root_addr)
         {
-            if (GET_SIZE(HDRP(bp)) >= asize)
+            /* Only search the group for the truth the list size is ascending.*/
+            size_t tmp_size = GET_SIZE(HDRP(bp));
+            if (tmp_size >= asize)
             {
-                remove_free(bp);
-                return bp;
+                found = 1;
+                /* Best case. size is the same.*/
+                if (tmp_size == asize)
+                {
+                    remove_free(bp);
+                    return bp;
+                }
+                /* Find the best size*/
+                else
+                {
+                    if (tmp_size < min_size)
+                    {
+                        min_size = tmp_size;
+                        best_bp = bp;
+                    }
+                }
             }
             bp = GET_PTR(bp + WSIZE);
         }
+    }
+    if (found)
+    {
+        remove_free(best_bp);
+        return best_bp;
     }
     return NULL;
 }
@@ -599,6 +623,22 @@ int mm_check(int sign)
             if (!curr_alloc && !prev_alloc)
                 return -1;
             prev_alloc = curr_alloc;
+        }
+        break;
+
+    case FREE_LIST:
+        for (char *fp = segreg_free; fp < segreg_free + FREE_SIZE - 1; fp += WSIZE)
+        {
+            char *tmp = GET_PTR(fp);
+            while (tmp != root_addr)
+            {
+                /* Block in free list was not marked free*/
+                if (GET_ALLOC(HDRP(tmp)))
+                {
+                    return -1;
+                }
+                tmp = GET_PTR(tmp + WSIZE);
+            }
         }
         break;
     default:
