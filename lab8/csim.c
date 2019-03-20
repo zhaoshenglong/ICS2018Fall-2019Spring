@@ -12,11 +12,22 @@
 /* Align the address of blocks to be loaded*/
 #define ALIGN(p) ((((p) + block_n - 1) / block_n) * block_n)
 
-/* Cache type*/
+/* Cache simulator*/
+typedef struct set {
+	int linenum;
+	line_t *line;
+}set_t;
 
+typedef struct line {
+	char valid;
+	int tag;
+	int LRU;
+}line_t
 
-
+/* extern variable of getopt in main */
 extern char *optarg;
+
+
 int main(int argc, char *argv[])
 {
    	/* Number of sets, lines, blocks, misses, hit, evictions*/
@@ -26,9 +37,10 @@ int main(int argc, char *argv[])
 	/* Sign for verbose or silent*/
 	char verbose = 0;
 	
+	FILE fp;
 	int opt;
 	/* Get options from stdin*/
-	while((opt = getopt(argc, argv, "-vs:E:b:t:")) != -1){
+	while((opt = getopt(argc, argv, "vs:E:b:t:")) != -1){
 		switch(opt){
 		case 'v':
 			verbose = 1;
@@ -43,6 +55,7 @@ int main(int argc, char *argv[])
 			block_n = atoi(optarg);
 			break;
 		case 't':
+
 			break;
 		default:
 			printf("unknown character: %c\n", opt);
