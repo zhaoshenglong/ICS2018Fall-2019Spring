@@ -12,6 +12,10 @@
 /* Align the address of blocks to be loaded*/
 #define ALIGN(p) ((((p) + block_n - 1) / block_n) * block_n)
 
+/* Cache type*/
+
+
+
 extern char *optarg;
 int main(int argc, char *argv[])
 {
