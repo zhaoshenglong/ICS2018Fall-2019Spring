@@ -39,8 +39,8 @@
 typedef struct line
 {
 	unsigned long tag;
-	line_t *next;
-	line_t *prev;
+	struct line *next;
+	struct line *prev;
 } line_t;
 
 typedef struct set
@@ -69,9 +69,9 @@ extern char *optarg;
 int main(int argc, char *argv[])
 {
 	/* Number of sets, lines, blocks, misses, hit, evictions */
-	int set_n = 1, line_n = 1, block_n = 1;
+	int set_n = 1, line_n = 1;
 	int miss_n = 0, hit_n = 0, eviction_n = 0;
-	int set_bits = 0, block_bits = 0, tag_bits = 0;
+	int set_bits = 0, block_bits = 0;
 	char verbose = 0; /* Sign for verbose or silent */
 
 	unsigned long tag = 0;
@@ -98,7 +98,6 @@ int main(int argc, char *argv[])
 			break;
 		case 'b':
 			block_bits = atoi(optarg);
-			block_n = 1 << block_bits;
 			break;
 		case 't':
 			fp = fopen((char *)optarg, "r");
@@ -167,6 +166,7 @@ int main(int argc, char *argv[])
 			address = strtoul(c, NULL, 16);
 			parse_addr(address, &tag, &set_idx, set_bits, block_bits);
 			store(&cache[set_idx], tag, &hit_n, &miss_n, &eviction_n, verbose);
+			SKIP_LINE(c);
 			c++;
 			continue;
 		}
@@ -179,6 +179,8 @@ int main(int argc, char *argv[])
 			address = strtoul(c, NULL, 16);
 			parse_addr(address, &tag, &set_idx, set_bits, block_bits);
 			modify(&cache[set_idx], tag, &hit_n, &miss_n, &eviction_n, verbose);
+			SKIP_LINE(c);
+			c++;
 			continue;
 		}
 		else
@@ -212,6 +214,7 @@ set_t *init_cache(int set_n, int line_n)
 		cache[i].end->prev = cache[i].begin;
 		cache[i].end->next = NULL;
 	}
+	return cache;
 }
 
 /*
@@ -219,7 +222,6 @@ set_t *init_cache(int set_n, int line_n)
  */
 void fr_cache(set_t *cache, int set_n)
 {
-	set_t *tmp;
 	for (int i = 0; i < set_n; i++)
 	{
 		line_t *line = cache[i].begin->next, *tmp;
