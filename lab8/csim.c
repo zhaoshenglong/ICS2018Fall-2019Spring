@@ -1,7 +1,7 @@
 /**
  * INFORMATION For Lab8:
  * 	Student name: zhaoshenglong
- * 	Student ID  : 515030910241
+ * 	Student ID  : ics515030910241
  */
 
 #include "cachelab.h"
