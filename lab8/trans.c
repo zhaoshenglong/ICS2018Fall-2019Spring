@@ -18,6 +18,9 @@
 
 int is_transpose(int M, int N, int A[N][M], int B[M][N]);
 void trans_32(int M, int N, int A[N][M], int B[M][N]);
+void trans_64(int M, int N, int A[N][M], int B[M][N]);
+void trans_61_67(int M, int N, int A[N][M], int B[M][N]);
+void trans(int M, int N, int A[N][M], int B[M][N]);
 /* 
  * transpose_submit - This is the solution transpose function that you
  *     will be graded on for Part B of the assignment. Do not change
@@ -28,7 +31,14 @@ void trans_32(int M, int N, int A[N][M], int B[M][N]);
 char transpose_submit_desc[] = "Transpose submission";
 void transpose_submit(int M, int N, int A[N][M], int B[M][N])
 {
-    trans_32(M, N, A, B);
+    if ((M == N) && (M == 32))
+        trans_32(M, N, A, B);
+    else if ((M == N) && (M == 64))
+        trans_64(M, N, A, B);
+    else if ((M == 61) && (N == 67))
+        trans_61_67(M, N, A, B);
+    else
+        trans(M, N, A, B);
 }
 
 /* 
@@ -37,6 +47,8 @@ void transpose_submit(int M, int N, int A[N][M], int B[M][N])
  */
 /*
  * trans_32 - A special transpose for transpose 32 x 32 matrix
+ *           local variable: bb, bi, bj, i, j 
+ *                          Total 5;
  */
 char trans_32_desc[] = "Simple blocked transpose";
 void trans_32(int M, int N, int A[N][M], int B[M][N])
@@ -61,6 +73,39 @@ void trans_32(int M, int N, int A[N][M], int B[M][N])
             }
         }
     }
+}
+/*
+ * trans_64 - Transpose for 64 x 64 Matrix
+ *          Local variable: 
+ *          Total 
+ */
+char trans_64_desc[] = "Blocked transpose for 64 x 64";
+void trans_64(int M, int N, int A[N][M], int B[M][N])
+{
+    int bb; /* Temp variable for diagonal element*/
+    for (int bi = 0; bi < M; bi += 4)
+    {
+        for (int bj = 0; bj < N; bj += 4)
+        {
+            for (int i = bi; i < bi + 4; i++)
+            {
+                for (int j = bj; j < bj + 4; j++)
+                {
+                    if ((i - bi) == (j - bj))
+                    {
+                        bb = A[i][j];
+                    }
+                    else
+                        B[j][i] = A[i][j];
+                }
+                B[bj + i - bi][i] = bb;
+            }
+        }
+    }
+}
+char trans_61_67_desc[] = "Blocked transpose for 61 x 67 Matrix";
+void trans_61_67(int M, int N, int A[N][M], int B[M][N])
+{
 }
 /* 
  * trans - A simple baseline transpose function, not optimized for the cache.
@@ -95,6 +140,7 @@ void registerFunctions()
     /* Register any additional transpose functions */
     registerTransFunction(trans, trans_desc);
     registerTransFunction(trans_32, trans_32_desc);
+    registerTransFunction(trans_64, trans_64_desc);
 }
 
 /* 
