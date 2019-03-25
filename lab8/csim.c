@@ -124,6 +124,7 @@ int main(int argc, char *argv[])
 			break;
 		default:
 			printf("Unknown option: %c\n", opt);
+			exit(4);
 		}
 	}
 
