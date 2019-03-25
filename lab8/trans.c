@@ -48,8 +48,13 @@ void transpose_submit(int M, int N, int A[N][M], int B[M][N])
 
 /*
  * trans_32 - A special transpose for transpose 32 x 32 matrix
- *           local variable: bb, bi, bj, i, j 
- *                          Total 5;
+ *          Local variable: bi, bj, i, j, bb
+ *          Total 5
+ *          bi - block row 8 X 8
+ *          bj - block collomn 8 X 8
+ *          i  - index row
+ *          j  - index collomn
+ *          bb - buffer block 1 X 1
  */
 char trans_32_desc[] = "Simple blocked transpose";
 void trans_32(int M, int N, int A[N][M], int B[M][N])
@@ -77,8 +82,20 @@ void trans_32(int M, int N, int A[N][M], int B[M][N])
 }
 /*
  * trans_64 - Transpose for 64 x 64 Matrix
- *          Local variable: 
- *          Total 
+ *          Local variable: bi, bj, i, j, bb
+ *          Total 5
+ *          bi - block row 8 X 8
+ *          bj - block collomn 8 X 8
+ *          i  - index row
+ *          j  - index collomn
+ *          bb - buffer block start  4 X 8
+ *  Methods: First, transpose the diagonal block (8 X 8)
+ *           Second, transpose the non diagonal block ,use B[56][56] as a buffer
+ *  This step, only transpose B[0][0] ~ B[48][48], remained the last row and collomn
+ *           Third, transpose the last row and collom ,use B[56][48] as a buffer
+ *  This, step, remained the B[48][56], B[56][56] and B[56][48]
+ *           Fourth, transpose the B[56][56]
+ *           Last, transpose the B[48][56] and B[56][48]     
  */
 char trans_64_desc[] = "Blocked transpose for 64 x 64";
 void trans_64(int M, int N, int A[N][M], int B[M][N])
@@ -137,15 +154,12 @@ void trans_64(int M, int N, int A[N][M], int B[M][N])
             }
         }
     }
-    /* Transpose the non diagonal block */
-    for (bi = 0; bi < 64; bi += 8){
-        for (bj = 0; bj < 64; bj += 8){
-            /* Left the last three triangle block for buffer */
-            if (bi != bj && !(bi == 56 && bj >= 48) && !(bi == 48 && bj >=56)){
-                /* Switch buffer block */
-                if (bj == 56)
-                    bb = 48;
-                else bb = 56;
+    /* Transpose the non diagonal block, 56 x 56 */
+    bb = 56;
+    for (bi = 0; bi < 56; bi += 8){
+        for (bj = 0; bj < 56; bj += 8){
+            /* Spare the last three triangle block for buffer */
+            if (bi != bj){
                 /* Copy into the buffer block */
                 for (i = 0; i < 4; i++){
                     for (j = 0; j < 8; j++) {
@@ -169,7 +183,61 @@ void trans_64(int M, int N, int A[N][M], int B[M][N])
             }
         }
     }
-    /* Copy the last block */
+    /* Transpose the last collomn and row */
+    bb = 48;
+    for (bi = 0; bi < 48; bi += 8){
+        for (bj = 56; bj < 64; bj += 8){
+            /* Spare the last three triangle block for buffer */
+            if (bi != bj){
+                /* Copy into the buffer block */
+                for (i = 0; i < 4; i++){
+                    for (j = 0; j < 8; j++) {
+                        B[56 + i][j + bb] = A[bi + i][bj + j];
+                    }
+                }
+                /* Move to the distination */
+                for(i = 0; i < 4; i++){
+                    for (j = 0; j < 4; j++){
+                        B[bj + j][bi + i] = B[56 + i][bb + j];
+                        B[bj + j][bi + i + 4] = A[bi + i + 4][bj + j];
+                    }
+                }
+                for(i = 0; i < 4; i++){
+                    for (j = 4; j < 8; j++){
+                        B[bj + j][bi + i] = B[56 + i][bb + j];
+                        B[bj + j][bi + i + 4] = A[bi + i + 4][bj + j];
+                    }
+                }
+            }
+        }
+    }
+    for (bi = 56; bi < 64; bi += 8){
+        for (bj = 0; bj < 48; bj += 8){
+            /* Spare the last three triangle block for buffer */
+            if (bi != bj){
+                /* Copy into the buffer block */
+                for (i = 0; i < 4; i++){
+                    for (j = 0; j < 8; j++) {
+                        B[56 + i][j + bb] = A[bi + i][bj + j];
+                    }
+                }
+                /* Move to the distination */
+                for(i = 0; i < 4; i++){
+                    for (j = 0; j < 4; j++){
+                        B[bj + j][bi + i] = B[56 + i][bb + j];
+                        B[bj + j][bi + i + 4] = A[bi + i + 4][bj + j];
+                    }
+                }
+                for(i = 0; i < 4; i++){
+                    for (j = 4; j < 8; j++){
+                        B[bj + j][bi + i] = B[56 + i][bb + j];
+                        B[bj + j][bi + i + 4] = A[bi + i + 4][bj + j];
+                    }
+                }
+            }
+        }
+    }
+    /* Copy the last three block */
     for(bi = 56; bi < 64; bi += 4){
         for (i = bi; i < bi + 4; i++){
             for (j = 56; j < 64; j++){
@@ -215,6 +283,7 @@ void trans_64(int M, int N, int A[N][M], int B[M][N])
 char trans_61_67_desc[] = "Blocked transpose for 61 x 67 Matrix";
 void trans_61_67(int M, int N, int A[N][M], int B[M][N])
 {
+    
 }
 /* 
  * trans - A simple baseline transpose function, not optimized for the cache.
