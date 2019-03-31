@@ -60,10 +60,27 @@ void fr_cache(set_t *cache, int set_n);
 int load(set_t *set, unsigned long tag, int *hit_n, int *miss_n, int *eviction_n, int verbose);
 int store(set_t *set, unsigned long tag, int *hit_n, int *miss_n, int *eviction_n, int verbose);
 int modify(set_t *set, unsigned long tag, int *hit_n, int *miss_n, int *eviction_n, int verbose);
+
+/* Print a line of string.
+ * Format is like:
+ * 	L 304080 
+ * 	S 304088 
+ * Miss or Hit is print in load / store
+ */
 void printline(char *str);
+
+/* Parse the address, determine the tag and set index */
 void parse_addr(unsigned long addr, unsigned long *tag, int *set_idx, int set_bits, int block_bits);
+
+/* Tricky way of LRU
+ * Maintain a list of cache line.
+ * Every time access a block, then move it to the front.
+ */
 void move_front(line_t *line, line_t *begin);
-/* extern variable of getopt in main */
+
+/* extern variable of getopt in main 
+ * Store the address of cli input
+ */
 extern char *optarg;
 
 int main(int argc, char *argv[])
@@ -198,7 +215,8 @@ int main(int argc, char *argv[])
 }
 
 /* 
- *	Init the cache structure
+ *	Init the cache
+ *  set begin point to end, and end point to begin
  */
 set_t *init_cache(int set_n, int line_n)
 {
@@ -241,9 +259,15 @@ void fr_cache(set_t *cache, int set_n)
 /*
  *	Load the block.
 	Only check if it is in the cache, not really load
+	set - the set to be loaded
+	tag - tag of block
+	hit_n, miss_n, eviction_n
+		- hits, misses, evictions to be modified
+	verbose - sign of verbose / silent
  */
 int load(set_t *set, unsigned long tag, int *hit_n, int *miss_n, int *eviction_n, int verbose)
 {
+	/* Linear searcg for the line */
 	for (line_t *line = set->begin->next; line != set->end; line = line->next)
 	{
 		if (line->tag == tag)
@@ -251,11 +275,12 @@ int load(set_t *set, unsigned long tag, int *hit_n, int *miss_n, int *eviction_n
 			(*hit_n)++;
 			if (verbose)
 				printf(" hit\n");
-			/* Move to the end */
+			/* It is the latest accessed line*/
 			move_front(line, set->begin);
 			return 1;
 		}
 	}
+	/* Not found, miss */
 	(*miss_n)++;
 	if (set->full)
 	{
@@ -288,11 +313,13 @@ int load(set_t *set, unsigned long tag, int *hit_n, int *miss_n, int *eviction_n
 	}
 }
 
+/* Because the simulator, store is the same as load */
 int store(set_t *set, unsigned long tag, int *hit_n, int *miss_n, int *eviction_n, int verbose)
 {
 	return load(set, tag, hit_n, miss_n, eviction_n, verbose);
 }
 
+/* Modify is twice load */
 int modify(set_t *set, unsigned long tag, int *hit_n, int *miss_n, int *eviction_n, int verbose)
 {
 	int load_sig = load(set, tag, hit_n, miss_n, eviction_n, verbose);
@@ -309,6 +336,12 @@ void printline(char *str)
 	}
 }
 
+/* Parse address
+ * addr - address to be parsed
+ * tag  - tag of the block
+ * set_idx - index of set
+ * bits - indicate the number of bits of set and block 
+ */
 void parse_addr(unsigned long addr, unsigned long *tag, int *set_idx, int set_bits, int block_bits)
 {
 	int tag_bits = ADDR_BITS - set_bits - block_bits;
@@ -319,6 +352,11 @@ void parse_addr(unsigned long addr, unsigned long *tag, int *set_idx, int set_bi
 	(*tag) = (addr >> (block_bits + set_bits)) & tag_mask;
 }
 
+/*
+ * Move the given line to the front of cache
+ * line - line to be moved
+ * begin- begin of cache
+ */
 void move_front(line_t *line, line_t *begin)
 {
 	/* Remove the line first */

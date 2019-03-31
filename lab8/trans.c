@@ -68,6 +68,7 @@ void trans_32(int M, int N, int A[N][M], int B[M][N])
             {
                 for (int j = bj; j < bj + 8; j++)
                 {
+                    /* If is diagonal, conflict miss */
                     if ((i - bi) == (j - bj))
                     {
                         bb = A[i][j];
@@ -142,6 +143,7 @@ void trans_64(int M, int N, int A[N][M], int B[M][N])
             }
         }
     }
+
     /* Then, deal with the rest diagonal block, use B[8][0] ~ B[11][7] */
     /* Left the last block for latter buffer block */
     for (bj = 8; bj < 56; bj += 8)
@@ -173,6 +175,7 @@ void trans_64(int M, int N, int A[N][M], int B[M][N])
             }
         }
     }
+
     /* Transpose the non diagonal block, 56 x 56 */
     bb = 56;
     for (bi = 0; bi < 56; bi += 8)
