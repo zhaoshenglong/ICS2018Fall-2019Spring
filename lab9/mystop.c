@@ -12,25 +12,25 @@
 #include <sys/wait.h>
 #include <signal.h>
 
-int main(int argc, char **argv) 
+int main(int argc, char **argv)
 {
     int i, secs;
-    pid_t pid; 
+    pid_t pid;
 
-    if (argc != 2) {
-	fprintf(stderr, "Usage: %s <n>\n", argv[0]);
-	exit(0);
+    if (argc != 2)
+    {
+        fprintf(stderr, "Usage: %s <n>\n", argv[0]);
+        exit(0);
     }
     secs = atoi(argv[1]);
 
-    for (i=0; i < secs; i++)
-       sleep(1);
-	
-    pid = getpid(); 
+    for (i = 0; i < secs; i++)
+        sleep(1);
+
+    pid = getpid();
 
     if (kill(-pid, SIGTSTP) < 0)
-       fprintf(stderr, "kill (tstp) error");
+        fprintf(stderr, "kill (tstp) error");
 
     exit(0);
-
 }
