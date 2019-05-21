@@ -1,8 +1,0 @@
-Question 1:
-	ps x -A | sort -d
-Question 2:
-	cat /usr/share/dicr/word | grep ^a | wc -w
-Question 3:
-	ls -l -S -r /etc/*.conf | head -n 5
-Question 4:
-	echo 'echo hello world!' > echo.sh; chmod +x echo.sh
