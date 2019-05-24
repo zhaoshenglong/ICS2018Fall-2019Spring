@@ -11,4 +11,4 @@ csapp.o: csapp.c csapp.h
 proxy: proxy.o csapp.o
 
 clean:
-	rm -f *~ *.o proxy proxy.log
+	rm -f *~ *.o proxy *.log

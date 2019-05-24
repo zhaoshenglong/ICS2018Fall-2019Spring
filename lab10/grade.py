@@ -928,7 +928,8 @@ def main():
         quiet = True
     strace = args.strace
     verbose = args.verbose
-    outside_proxy = args.outside
+    if args.outside != None:
+        outside_proxy = args.outside[0]
     if args.only == None:
         args.only = ["all"]
 
